@@ -1,0 +1,20 @@
+service: dynamodb-pessimistic-locking
+
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: go1.x
+  region: us-west-2
+
+package:
+  exclude:
+    - ./**
+  include:
+    - ./.bin/**
+
+functions:
+  reader:
+    handler: .bin/reader
+  writer:
+    handler: .bin/writer
