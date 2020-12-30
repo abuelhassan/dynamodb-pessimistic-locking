@@ -1,6 +1,5 @@
 # dynamodb-pessimistic-locking
-An example of pessimistic locking in AWS DynamoDB
+An example of pessimistic locking in AWS DynamoDB. To prevent reading data that are partially updated.
 
-## Run locally
-* Install serverless v2
-* Run `make deploy`
+## Local setup
+* serverless v2
