@@ -10,11 +10,11 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+
+	"abuelhassan/dynamodb-pessimistic-locking/helpers"
 )
 
 const (
@@ -25,11 +25,12 @@ const (
 	sk = "SK"
 
 	// Config
-	maxRetries  = 5
 	readTimeout = 1 * time.Second
 )
 
 var (
+	dbClient *dynamodb.DynamoDB
+
 	errInvalid = errors.New("invalid")
 	errBlocked = errors.New("blocked")
 	errUnknown = errors.New("unknown")
@@ -51,20 +52,16 @@ func handler(ctx context.Context, inp input) ([]output, error) {
 		return nil, errInvalid
 	}
 
-	sess := session.Must(session.NewSession())
-	r := &retryer{
-		def: client.DefaultRetryer{
-			NumMaxRetries: maxRetries,
-		},
+	key := map[string]*dynamodb.AttributeValue{
+		pk: {S: aws.String(inp.PK)},
+		sk: {S: aws.String(fmt.Sprintf("#%s", inp.PK))},
 	}
-	svc := dynamodb.New(sess, request.WithRetryer(aws.NewConfig(), r))
 
-	_, err := svc.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			pk: {S: aws.String(inp.PK)},
-			sk: {S: aws.String(fmt.Sprintf("#%s", inp.PK))},
-		},
+	// check if a write operation is blocking, and increment read blockers.
+	// (wtime < :nw) is only considered for the original request, and not the retried requests.
+	_, err := dbClient.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
+		TableName:           aws.String(tableName),
+		Key:                 key,
 		ConditionExpression: aws.String("wlock = :fls OR wtime < :nw"),
 		UpdateExpression:    aws.String("set readers = readers + :one, rtime = :rt"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -73,7 +70,7 @@ func handler(ctx context.Context, inp input) ([]output, error) {
 			":nw":  {N: aws.String(getTimeStamp(time.Now()))},
 			":rt":  {N: aws.String(getTimeStamp(time.Now().Add(readTimeout)))},
 		},
-	})
+	}, helpers.ConditionFailedRetryOption)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
@@ -85,13 +82,11 @@ func handler(ctx context.Context, inp input) ([]output, error) {
 		return nil, errUnknown
 	}
 
+	// release lock.
 	defer func() {
-		_, err = svc.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
-			TableName: aws.String(tableName),
-			Key: map[string]*dynamodb.AttributeValue{
-				pk: {S: aws.String(inp.PK)},
-				sk: {S: aws.String(fmt.Sprintf("#%s", inp.PK))},
-			},
+		_, err := dbClient.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
+			TableName:           aws.String(tableName),
+			Key:                 key,
 			ConditionExpression: aws.String("readers <> :zero"),
 			UpdateExpression:    aws.String("set readers = readers - :one"),
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -104,7 +99,7 @@ func handler(ctx context.Context, inp input) ([]output, error) {
 		}
 	}()
 
-	result, err := svc.QueryWithContext(ctx, &dynamodb.QueryInput{
+	result, err := dbClient.QueryWithContext(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(tableName),
 		KeyConditionExpression: aws.String(fmt.Sprintf("%s = :pk", pk)),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
@@ -125,34 +120,15 @@ func handler(ctx context.Context, inp input) ([]output, error) {
 	return out, nil
 }
 
+func getTimeStamp(t time.Time) string {
+	return strconv.FormatInt(t.UTC().Unix(), 10)
+}
+
 func main() {
 	lambda.Start(handler)
 }
 
-// TODO: move to layer
-
-type retryer struct {
-	def client.DefaultRetryer
-}
-
-func (r retryer) RetryRules(req *request.Request) time.Duration {
-	return r.def.RetryRules(req)
-}
-
-func (r retryer) ShouldRetry(req *request.Request) bool {
-	if aerr, ok := req.Error.(awserr.Error); ok {
-		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-			return true
-		}
-	}
-
-	return r.def.ShouldRetry(req)
-}
-
-func (r retryer) MaxRetries() int {
-	return r.def.MaxRetries()
-}
-
-func getTimeStamp(t time.Time) string {
-	return strconv.FormatInt(t.UTC().Unix(), 10)
+func init() {
+	sess := session.Must(session.NewSession())
+	dbClient = dynamodb.New(sess)
 }

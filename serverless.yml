@@ -6,6 +6,7 @@ provider:
   name: aws
   runtime: go1.x
   region: us-west-2
+  memorySize: 128 # 128 MB
   iamRoleStatements: # permissions for all functions.
     - Effect: Allow
       Action:
