@@ -2,6 +2,9 @@ service: dynamodb-pessimistic-locking
 
 frameworkVersion: '2'
 
+custom:
+  tableName: pessimistic-locking
+
 provider:
   name: aws
   runtime: go1.x
@@ -15,6 +18,8 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:BatchWriteItem
       Resource: 'arn:aws:dynamodb:us-west-2:*:*'
+#  environment:
+#    tableName: ${self:custom.tableName}
 
 package:
   exclude:
@@ -27,3 +32,23 @@ functions:
     handler: .bin/reader
   writer:
     handler: .bin/writer
+
+resources:
+  Resources:
+    pessimisticLocking:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableName}
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 2
+          WriteCapacityUnits: 4
