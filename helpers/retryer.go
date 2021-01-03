@@ -27,8 +27,9 @@ func ConditionFailedRetryOption(req *request.Request) {
 	}
 }
 
-// retryer implements request.Retryer. It has the same behavior of a DefaultRetryer,
-// except that it retries errors of type dynamodb.ErrCodeConditionalCheckFailedException.
+// retryer implements aws's request.Retryer.
+// It retries errors of type dynamodb.ErrCodeConditionalCheckFailedException with a configured delay time.
+// For other types of errors, it has the same behavior of the default retryer (exponential backoff and jitter).
 type retryer struct {
 	client.DefaultRetryer
 }
