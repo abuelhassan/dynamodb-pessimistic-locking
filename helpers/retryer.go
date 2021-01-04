@@ -13,7 +13,6 @@ import (
 
 const (
 	// change based on time consumed by queries.
-	// this waits for 1sec.
 	maxRetries = 5
 	delay      = 100 * time.Millisecond
 )
