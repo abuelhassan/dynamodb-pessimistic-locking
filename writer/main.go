@@ -113,8 +113,9 @@ func handler(ctx context.Context, inp input) error {
 		return errUnknown
 	}
 	if m.Readers != 0 {
-		// wait for all readers to release their locks, and update wlock timeout accordingly.
+		// wait for all readers to release their locks, and update wlock timeout.
 		// (rtime < :nw) is only considered for the original request, and not the retried requests.
+		// wlock doesn't change with every retry, it takes the value from the original request.
 		_, err = dbClient.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
 			TableName:           aws.String(tableName),
 			Key:                 key,
