@@ -15,4 +15,7 @@ deploy-%: clean build
 	sls deploy --verbose function -f $*
 
 invoke-%:
-	sls invoke --function $s
+	sls invoke --function $*
+
+remove:
+	sls remove
