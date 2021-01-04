@@ -15,7 +15,7 @@ const (
 	// change based on time consumed by queries.
 	// this waits for 1sec.
 	maxRetries = 5
-	delay      = 200 * time.Millisecond
+	delay      = 100 * time.Millisecond
 )
 
 func ConditionFailedRetryOption(req *request.Request) {
@@ -34,6 +34,8 @@ type retryer struct {
 	client.DefaultRetryer
 }
 
+// no need to implement this function in case you want to depend on 
+// the exponential backoff and jitter algorithm with the default values for failed conditions.
 func (r retryer) RetryRules(req *request.Request) time.Duration {
 	if aerr, ok := req.Error.(awserr.Error); ok {
 		if aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
