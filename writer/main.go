@@ -132,6 +132,7 @@ func handler(ctx context.Context, inp input) error {
 					return errBlocked
 				}
 			}
+			// instead of failing, we can wait until we make sure all the readers are expired.
 			fmt.Println(err)
 			return errUnknown
 		}
